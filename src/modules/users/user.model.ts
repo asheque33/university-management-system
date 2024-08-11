@@ -7,6 +7,7 @@ const userSchema = new Schema<TUser>(
     id: {
       type: String,
       required: true,
+      unique: true,
     },
     password: {
       type: String,
@@ -37,7 +38,7 @@ const userSchema = new Schema<TUser>(
 
 userSchema.pre('save', async function (next) {
   // eslint-disable-next-line @typescript-eslint/no-this-alias
-  const user = this; // doc
+  const user = this; // current document sent from the client
   // hashing password and save into DB
   user.password = await bcrypt.hash(
     user.password,

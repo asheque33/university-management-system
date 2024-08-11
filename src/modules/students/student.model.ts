@@ -150,20 +150,20 @@ const studentSchema = new Schema<TStudent, StudentModel>(
 
 // virtual
 studentSchema.virtual('fullName').get(function () {
-  return this.name.firstName + this.name.middleName + this.name.lastName;
+  return `${this.name.firstName} ${this.name.middleName} ${this.name.lastName}`;
 });
 
-// Query Middleware
+// Query Middleware to find students
 studentSchema.pre('find', function (next) {
   this.find({ isDeleted: { $ne: true } });
   next();
 });
-
+// Query Middleware to find single student
 studentSchema.pre('findOne', function (next) {
   this.find({ isDeleted: { $ne: true } });
   next();
 });
-
+// Query Middleware with aggregate method
 studentSchema.pre('aggregate', function (next) {
   this.pipeline().unshift({ $match: { isDeleted: { $ne: true } } });
   next();
