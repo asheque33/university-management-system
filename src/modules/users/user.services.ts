@@ -1,13 +1,16 @@
+import mongoose from 'mongoose';
 import config from '../../config';
 import { AcademicSemesterModel } from '../academicSemester/academicSemester.model';
 import { TStudent } from '../students/student.interface';
 import { Student } from '../students/student.model';
 import { TUser } from './user.interface';
 import { User } from './user.model';
-import { generateFirstStudentId } from './user.utils';
+import { generateStudentId } from './user.utils';
+import AppError from '../../errors/AppError';
+import httpStatus from 'http-status';
 
 const createStudentIntoDB = async (password: string, payload: TStudent) => {
-  // create a user object
+  // create a user empty object
   const userData: Partial<TUser> = {};
 
   //if password is not given , use deafult password
@@ -19,25 +22,40 @@ const createStudentIntoDB = async (password: string, payload: TStudent) => {
   const admissionSemester = await AcademicSemesterModel.findById(
     payload.academicSemester,
   );
-  //set manually generated it
-  if (admissionSemester) {
-    userData.id = await generateFirstStudentId(admissionSemester);
-  }
-
+  // ! Transaction-Rollback Applied[2/more database write korar khetre use kora hoy]
+  const session = await mongoose.startSession();
   // create a user
-  const newUser = await User.create(userData);
-
-  //create a student
-  if (Object.keys(newUser).length) {
+  try {
+    session.startTransaction(); // Transaction-1
+    //set manually generated it
+    if (admissionSemester) {
+      userData.id = await generateStudentId(admissionSemester);
+    }
+    const newUser = await User.create([userData], { session });
+    //! transaction-rollback apply korle data array form e create hoy, normally object form e thake
+    if (!newUser.length) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create User.');
+    }
     // set id , _id as user
-    payload.id = newUser.id;
-    payload.user = newUser._id; //reference _id
-
-    // const newStudent = await Student.create(payload);  //! built-in static method
-    const studentInstance = new Student(payload);
-    const newStudent = await studentInstance.save(); //! built-in instance method
-
+    payload.id = newUser[0].id;
+    payload.user = newUser[0]._id; //reference _id
+    // create a student
+    const newStudent = await Student.create([payload], { session }); //! built-in static method
+    // const studentInstance = new Student([payload],{session});// Transaction-2
+    // const newStudent = await studentInstance.save(); //! built-in instance method
+    if (!newStudent.length) {
+      throw new AppError(httpStatus.BAD_REQUEST, 'Failed to create Student.');
+    }
+    await session.commitTransaction();
+    await session.endSession();
     return newStudent;
+  } catch (error) {
+    await session.abortTransaction();
+    await session.endSession();
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      'Failed to create both User and Student.',
+    );
   }
 };
 
